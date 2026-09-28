@@ -1,0 +1,53 @@
+import { randomUUID } from "node:crypto";
+import { NextResponse } from "next/server";
+import { getGroupPayload } from "@/lib/group-data";
+import { getSupabaseAdmin, PHOTO_BUCKET } from "@/lib/supabase-admin";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+const missions: Record<string, number> = { form: 3, material: 1, light: 1, place: 1 };
+
+export async function POST(request: Request) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return NextResponse.json({ error: "Supabase is not configured." }, { status: 503 });
+  try {
+    const form = await request.formData();
+    const groupId = String(form.get("groupId") ?? "");
+    const mission = String(form.get("mission") ?? "");
+    const slot = Number(form.get("slot"));
+    const photographer = String(form.get("photographer") ?? "").trim().slice(0, 60);
+    const file = form.get("file");
+    if (!/^[0-9a-f-]{36}$/i.test(groupId) || !(mission in missions) || !Number.isInteger(slot) || slot < 0 || slot >= missions[mission] || !photographer || !(file instanceof File)) {
+      return NextResponse.json({ error: "Check the group, photographer, and photo details." }, { status: 400 });
+    }
+    if (!(["image/jpeg", "image/png", "image/webp"].includes(file.type)) || file.size > 4_000_000 || file.size < 1) {
+      return NextResponse.json({ error: "Use a JPG, PNG, or WebP under 4 MB." }, { status: 400 });
+    }
+    const order = ["form", "material", "light", "place"];
+    const { data: previous, error: previousError } = await supabase.from("photos").select("mission, slot, photographer").eq("group_id", groupId);
+    if (previousError) throw previousError;
+    const missingPrevious = order.slice(0, order.indexOf(mission)).some((earlier) =>
+      Array.from({ length: missions[earlier] }, (_, index) => index).some((index) =>
+        !(previous ?? []).some((photo) => photo.mission === earlier && photo.slot === index && photo.photographer?.trim())
+      )
+    );
+    if (missingPrevious) return NextResponse.json({ error: "Complete every photo and photographer name in the earlier missions first." }, { status: 409 });
+    const extension = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+    const storagePath = `${groupId}/${mission}/${slot}-${randomUUID()}.${extension}`;
+    const { error: uploadError } = await supabase.storage.from(PHOTO_BUCKET).upload(storagePath, file, { contentType: file.type, upsert: false });
+    if (uploadError) throw uploadError;
+    const { data: oldPhoto } = await supabase.from("photos").select("storage_path").eq("group_id", groupId).eq("mission", mission).eq("slot", slot).maybeSingle();
+    const { error: saveError } = await supabase.from("photos").upsert({ group_id: groupId, mission, slot, filename: file.name.slice(0, 120), photographer, storage_path: storagePath }, { onConflict: "group_id,mission,slot" });
+    if (saveError) {
+      await supabase.storage.from(PHOTO_BUCKET).remove([storagePath]);
+      throw saveError;
+    }
+    if (oldPhoto?.storage_path) await supabase.storage.from(PHOTO_BUCKET).remove([oldPhoto.storage_path]);
+    const { data: group, error: groupError } = await supabase.from("groups").select("id, name, poster_path").eq("id", groupId).single();
+    if (groupError || !group) throw groupError ?? new Error("Group not found.");
+    return NextResponse.json(await getGroupPayload(supabase, group));
+  } catch (error) {
+    console.error("photo upload failed", error);
+    return NextResponse.json({ error: "Photo could not be saved. Check your connection and try again." }, { status: 500 });
+  }
+}
