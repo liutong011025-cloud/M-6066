@@ -5,6 +5,8 @@ import { getSupabaseAdmin, PHOTO_BUCKET } from "@/lib/supabase-admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+const imageGenerationTimeoutMs = 240_000;
 const required = [["form", 0], ["form", 1], ["form", 2], ["material", 0], ["light", 0], ["place", 0]] as const;
 
 export async function POST(request: Request) {
@@ -41,7 +43,7 @@ export async function POST(request: Request) {
         response_format: "url",
         watermark: false,
       }),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(imageGenerationTimeoutMs),
     });
     const generated = await response.json() as { data?: Array<{ url?: string }>; error?: { message?: string } };
     if (!response.ok || !generated.data?.[0]?.url) throw new Error(generated.error?.message || "The image service did not return a poster.");
@@ -58,6 +60,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ url: poster.signedUrl });
   } catch (error) {
     console.error("poster generation failed", error);
+    if (error instanceof Error && error.name === "TimeoutError") {
+      return NextResponse.json({ error: "The image engine took longer than four minutes. Your photos are saved; please try again." }, { status: 504 });
+    }
     return NextResponse.json({ error: "Poster generation failed. Your uploaded photographs are safe; please try again." }, { status: 500 });
   }
 }
