@@ -73,17 +73,7 @@ export default function Home() {
     if (!saved) return;
     try {
       const parsed = JSON.parse(saved) as Group;
-      if (String(parsed.id).startsWith("local-") && ["localhost", "127.0.0.1"].includes(window.location.hostname)) {
-        setGroup(parsed);
-        if (parsed.posterUrl) setPoster(parsed.posterUrl);
-      } else if (!String(parsed.id).startsWith("local-")) {
-        fetch("/api/groups", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: parsed.name }) })
-          .then(async (response) => { const data = await response.json(); if (!response.ok) throw new Error(data.error || "Could not restore the group."); return data.group as Group; })
-          .then((fresh) => { setGroup(fresh); localStorage.setItem("mplus-group", JSON.stringify(fresh)); if (fresh.posterUrl) setPoster(fresh.posterUrl); })
-          .catch(() => { localStorage.removeItem("mplus-group"); setNotice("Enter your group name to load its saved photographs."); });
-      } else {
-        localStorage.removeItem("mplus-group");
-      }
+      if (typeof parsed.name === "string" && parsed.name.trim()) setName(parsed.name);
     } catch {
       localStorage.removeItem("mplus-group");
     }
@@ -342,7 +332,8 @@ export default function Home() {
             <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(event) => { const file = event.target.files?.[0]; const mission = event.currentTarget.getAttribute("data-mission") || current.id; const slot = Number(event.currentTarget.getAttribute("data-slot") || 0); if (file) uploadPhoto(file, mission, slot); event.currentTarget.value = ""; }} />
           </section>
           {notice && <div className="notice-bar" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Dismiss message"><X size={20} /></button></div>}
-          <div className="mission-actions"><button className="back-button" onClick={() => missionIndex === 0 ? setStage("overview") : openMission(missionIndex - 1)}><ArrowLeft size={20} />{missionIndex === 0 ? "BACK TO M+ INTRO" : "PREVIOUS MISSION"}</button>{missionIndex < 3 ? <button className="next-button" onClick={() => openMission(missionIndex + 1)} disabled={busy || !missionComplete(current)}>{missionComplete(current) ? `NEXT: ${missions[missionIndex + 1].title}` : `UPLOAD ${current.shots.length === 1 ? "THE PHOTO" : `ALL ${current.shots.length} PHOTOS`} TO CONTINUE`} <ArrowRight size={21} /></button> : <button className="next-button" onClick={generatePoster} disabled={busy || completeCount < photoCount}><Sparkles size={20} />{busy ? "MAKING POSTER…" : completeCount < photoCount ? `UPLOAD ALL ${photoCount} PHOTOS FIRST` : "GENERATE GROUP POSTER"}</button>}</div>
+          <div className="mission-actions"><button className="back-button" onClick={() => missionIndex === 0 ? setStage("overview") : openMission(missionIndex - 1)}><ArrowLeft size={20} />{missionIndex === 0 ? "BACK TO M+ INTRO" : "PREVIOUS MISSION"}</button>{missionIndex < 3 ? <button className="next-button" onClick={() => openMission(missionIndex + 1)} disabled={busy || !missionComplete(current)}>{missionComplete(current) ? `NEXT: ${missions[missionIndex + 1].title}` : `UPLOAD ${current.shots.length === 1 ? "THE PHOTO" : `ALL ${current.shots.length} PHOTOS`} TO CONTINUE`} <ArrowRight size={21} /></button> : <button className="next-button" onClick={generatePoster} disabled={busy || completeCount < photoCount}><Sparkles size={20} />{busy ? "MAKING POSTER… PLEASE WAIT" : completeCount < photoCount ? `UPLOAD ALL ${photoCount} PHOTOS FIRST` : "GENERATE GROUP POSTER"}</button>}</div>
+          {missionIndex === 3 && busy && <p className="completion-help" role="status">The image engine is arranging your six photos. This can take up to four minutes. Keep this page open; your uploaded photos are already saved.</p>}
           {!missionComplete(current) && <p className="completion-help">This mission unlocks the next step only after every frame has a saved photograph and photographer name.</p>}
         </div>
       </>}
