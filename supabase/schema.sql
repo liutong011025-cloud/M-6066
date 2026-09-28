@@ -33,3 +33,30 @@ alter table public.photos enable row level security;
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('mplus-6066', 'mplus-6066', false, 4194304, array['image/jpeg', 'image/png', 'image/webp'])
 on conflict (id) do update set public = false, file_size_limit = 4194304, allowed_mime_types = excluded.allowed_mime_types;
+
+-- Course groups. Re-running this script keeps existing photos and group records.
+insert into public.groups (name) values
+  ('TonyTest'),
+  ('wonderland'),
+  ('SevenFade'),
+  ('eat what'),
+  ('SHOEGAZERS'),
+  ('Star Lab'),
+  ('The Foundry'),
+  ('The Six'),
+  ('Nova'),
+  ('Spark'),
+  ('Septastar'),
+  ('ultraman&woman'),
+  ('Six gods'),
+  ('The Professionals'),
+  ('Hello World'),
+  ('EduVengers'),
+  ('studio 6.0'),
+  ('High-Five'),
+  ('Six Wonders'),
+  ('DreamTeam'),
+  ('Bugless'),
+  ('7-eleva'),
+  ('TUFF')
+on conflict (name) do nothing;
