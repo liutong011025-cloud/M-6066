@@ -7,7 +7,15 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 const imageGenerationTimeoutMs = 240_000;
+const preferredImageModel = "doubao-seedream-5-0-pro-260628";
+const retiredImageModels = new Set(["doubao-seedream-4-0-250828", "doubao-seedream-4-5-251128"]);
 const required = [["form", 0], ["form", 1], ["form", 2], ["material", 0], ["light", 0], ["place", 0]] as const;
+
+function imageModel() {
+  const configured = process.env.VOLCENGINE_MODEL?.trim();
+  if (!configured || retiredImageModels.has(configured)) return preferredImageModel;
+  return configured;
+}
 
 export async function POST(request: Request) {
   const supabase = getSupabaseAdmin();
@@ -44,10 +52,11 @@ export async function POST(request: Request) {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: process.env.VOLCENGINE_MODEL || "doubao-seedream-4-0-250828",
+        model: imageModel(),
         prompt: `Create a polished contemporary museum field-study poster using ALL ${orderedPhotos.length} supplied reference photographs as the actual photo content. Preserve what each photo depicts and arrange every photograph as a separate image on a tactile handmade research board. The reference order is ${referenceGuide}. FORM has three distinct architectural views. MATERIAL shows facade details, LIGHT shows human-scale light and space, and PLACE & IDENTITY shows harbour skyline context. Include each optional second photo when supplied. Use a warm off-white paper ground, precise black grid lines, vermilion, cobalt, butter yellow and soft pink colour blocks, large editorial typography, restrained hand-drawn arrows and note marks. Put the exact group name “${group.name.replace(/["\\]/g, "")}” prominently in the center in large bold type. Add the exact title “M+6066” and the section titles FORM, MATERIAL, LIGHT, PLACE & IDENTITY. The result should look like a beautifully assembled student architecture field journal. Landscape 3:2 composition, crisp legible layout.`,
         image: signedImages,
-        size: "2K",
+        size: "2496x1664",
+        output_format: "png",
         sequential_image_generation: "disabled",
         response_format: "url",
         watermark: false,
