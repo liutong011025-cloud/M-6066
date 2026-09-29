@@ -17,6 +17,10 @@ function imageModel() {
   return configured;
 }
 
+function isStorageObjectTooLarge(error: { message?: string; statusCode?: string | number }) {
+  return String(error.statusCode) === "413" || /maximum allowed size|EntityTooLarge/i.test(error.message ?? "");
+}
+
 export async function POST(request: Request) {
   const supabase = getSupabaseAdmin();
   if (!supabase) return NextResponse.json({ error: "Supabase is not configured. The local preview can still make a poster." }, { status: 503 });
@@ -56,7 +60,7 @@ export async function POST(request: Request) {
         prompt: `Create a polished contemporary museum field-study poster using ALL ${orderedPhotos.length} supplied reference photographs as the actual photo content. Preserve what each photo depicts and arrange every photograph as a separate image on a tactile handmade research board. The reference order is ${referenceGuide}. FORM has three distinct architectural views. MATERIAL shows facade details, LIGHT shows human-scale light and space, and PLACE & IDENTITY shows harbour skyline context. Include each optional second photo when supplied. Use a warm off-white paper ground, precise black grid lines, vermilion, cobalt, butter yellow and soft pink colour blocks, large editorial typography, restrained hand-drawn arrows and note marks. Put the exact group name “${group.name.replace(/["\\]/g, "")}” prominently in the center in large bold type. Add the exact title “M+6066” and the section titles FORM, MATERIAL, LIGHT, PLACE & IDENTITY. The result should look like a beautifully assembled student architecture field journal. Landscape 3:2 composition, crisp legible layout.`,
         image: signedImages,
         size: "2496x1664",
-        output_format: "png",
+        output_format: "jpeg",
         response_format: "url",
         watermark: false,
       }),
@@ -66,9 +70,15 @@ export async function POST(request: Request) {
     if (!response.ok || !generated.data?.[0]?.url) throw new Error(generated.error?.message || "The image service did not return a poster.");
     const imageResponse = await fetch(generated.data[0].url);
     if (!imageResponse.ok) throw new Error("The generated poster could not be saved.");
-    const posterPath = `${group.id}/poster-${randomUUID()}.png`;
-    const { error: uploadError } = await supabase.storage.from(PHOTO_BUCKET).upload(posterPath, await imageResponse.arrayBuffer(), { contentType: imageResponse.headers.get("content-type") || "image/png", upsert: false });
-    if (uploadError) throw uploadError;
+    const posterPath = `${group.id}/poster-${randomUUID()}.jpg`;
+    const posterBytes = await imageResponse.arrayBuffer();
+    const { error: uploadError } = await supabase.storage.from(PHOTO_BUCKET).upload(posterPath, posterBytes, { contentType: "image/jpeg", upsert: false });
+    if (uploadError && isStorageObjectTooLarge(uploadError)) {
+      const { error: bucketError } = await supabase.storage.updateBucket(PHOTO_BUCKET, { public: false, fileSizeLimit: 20 * 1024 * 1024, allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"] });
+      if (bucketError) throw uploadError;
+      const { error: retryError } = await supabase.storage.from(PHOTO_BUCKET).upload(posterPath, posterBytes, { contentType: "image/jpeg", upsert: false });
+      if (retryError) throw retryError;
+    } else if (uploadError) throw uploadError;
     const { error: updateError } = await supabase.from("groups").update({ poster_path: posterPath }).eq("id", group.id);
     if (updateError) throw updateError;
     if (group.poster_path) await supabase.storage.from(PHOTO_BUCKET).remove([group.poster_path]);
