@@ -65,5 +65,6 @@ insert into public.groups (name) values
   ('DreamTeam'),
   ('Bugless'),
   ('7-eleva'),
-  ('TUFF')
+  ('TUFF'),
+  ('Ungrouped')
 on conflict (name) do nothing;
