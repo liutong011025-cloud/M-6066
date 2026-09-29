@@ -57,7 +57,6 @@ export async function POST(request: Request) {
         image: signedImages,
         size: "2496x1664",
         output_format: "png",
-        sequential_image_generation: "disabled",
         response_format: "url",
         watermark: false,
       }),
