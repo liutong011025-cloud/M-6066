@@ -38,8 +38,8 @@ alter table public.photos enable row level security;
 -- Photos stay private. The server uses SUPABASE_SERVICE_ROLE_KEY to create
 -- one-hour signed read URLs after checking each group's records.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('mplus-6066', 'mplus-6066', false, 4194304, array['image/jpeg', 'image/png', 'image/webp'])
-on conflict (id) do update set public = false, file_size_limit = 4194304, allowed_mime_types = excluded.allowed_mime_types;
+values ('mplus-6066', 'mplus-6066', false, 20971520, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update set public = false, file_size_limit = 20971520, allowed_mime_types = excluded.allowed_mime_types;
 
 -- Course groups. Re-running this script keeps existing photos and group records.
 insert into public.groups (name) values
