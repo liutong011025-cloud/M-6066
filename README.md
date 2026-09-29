@@ -1,6 +1,6 @@
 # M+6066
 
-An English architecture field study for student groups. The route is **Meet M+ → FORM → MATERIAL → LIGHT → PLACE & IDENTITY → AI poster → Miro**. Every mission requires its photo(s) and a photographer name before the next mission unlocks.
+An English architecture field study for student groups. The route is **Meet M+ → four missions in any order → AI poster → Miro**. The poster unlocks after all required photos and photographer names are saved.
 
 ## Upload to GitHub
 
@@ -28,8 +28,9 @@ The key shown in the earlier screenshot was exposed in a chat image. Rotate it i
 ## How the deployed app works
 
 - Enter a group name such as `TonyTest`. Groups, photo credits, photo files, and the final poster are saved in Supabase. A group name is a shared identifier, not a password.
-- FORM requires three photographs. MATERIAL, LIGHT, and PLACE & IDENTITY each require one. The page and upload API both enforce the order. A photo plus photographer name is required for each frame.
-- The poster API sends the six stored photos to **Volcengine Seedream**, saves its generated image in the private Supabase bucket, then reveals the download and class Miro link. The deployed site does **not** substitute a browser collage if the database or image engine is unavailable; it shows an error so the setup can be corrected.
+- FORM requires three labelled photographs. MATERIAL, LIGHT, and PLACE & IDENTITY each require one and allow one optional second view. Missions can be visited and uploaded in any order. A photographer name is required for every uploaded photo. The in-group **Refresh Photos** button loads teammates' latest photos without leaving the current page.
+- The poster API sends all six to nine stored photos to **Volcengine Seedream** after the six required slots are complete, saves its generated image in the private Supabase bucket, then reveals the download and class Miro link. The deployed site does **not** substitute a browser collage if the database or image engine is unavailable; it shows an error so the setup can be corrected.
+- Poster generation may take several minutes. The route allows up to five minutes on Vercel and gives the image engine four minutes before returning a specific timeout message. Keep the page open while it works; uploaded photos are already saved.
 - The Miro destination is `https://miro.com/app/board/uXjVHvXSago=/?share_link_id=388276372730`. Students save the poster, place it in their group's area, and write answers to the mission questions beside it.
 
 ## Local preview
