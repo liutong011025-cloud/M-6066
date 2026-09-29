@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, Check, Download, ImagePlus, Sparkles, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Check, Download, ImagePlus, RefreshCw, Sparkles, X } from "lucide-react";
 
 type Photo = { id: string | number; mission: string; slot: string; filename: string; photographer: string; url: string };
 type Group = { id: string | number; name: string; photos: Photo[]; posterUrl?: string | null };
@@ -57,7 +57,9 @@ export default function Home() {
   const [stage, setStage] = useState<Stage>("overview");
   const [missionIndex, setMissionIndex] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState("");
+  const [syncNotice, setSyncNotice] = useState("");
   const [poster, setPoster] = useState("");
   const [authors, setAuthors] = useState<Record<string, string>>({});
   const inputRef = useRef<HTMLInputElement>(null);
@@ -66,7 +68,6 @@ export default function Home() {
   const completeCount = useMemo(() => missions.reduce((count, mission) => count + mission.shots.filter((_, slot) => allPhotos.some((photo) => photo.mission === mission.id && photo.slot === String(slot))).length, 0), [allPhotos]);
   const isLocalPreview = () => ["localhost", "127.0.0.1"].includes(window.location.hostname);
   const missionComplete = (mission: Mission) => mission.shots.every((_, slot) => allPhotos.some((photo) => photo.mission === mission.id && photo.slot === String(slot) && photo.photographer.trim()));
-  const canOpenMission = (index: number) => missions.slice(0, index).every(missionComplete);
 
   useEffect(() => {
     const saved = localStorage.getItem("mplus-group");
@@ -83,6 +84,34 @@ export default function Home() {
     setGroup(next);
     localStorage.setItem("mplus-group", JSON.stringify(next));
     if (String(next.id).startsWith("local-")) localStorage.setItem(`mplus-group-${next.name.toLowerCase()}`, JSON.stringify(next));
+  }
+
+  async function refreshGroup() {
+    if (!group || refreshing) return;
+    if (String(group.id).startsWith("local-")) {
+      setSyncNotice("Local preview photos are stored on this device only.");
+      return;
+    }
+    setRefreshing(true);
+    setSyncNotice("");
+    try {
+      const response = await fetch("/api/groups", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: group.name }),
+        cache: "no-store",
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not refresh group photos.");
+      const fresh = data.group as Group;
+      saveGroup(fresh);
+      setPoster(fresh.posterUrl ?? "");
+      setSyncNotice(`Latest group photos loaded: ${fresh.photos.length} saved. You can stay on this step.`);
+    } catch (error) {
+      setSyncNotice(error instanceof Error ? error.message : "Could not refresh group photos.");
+    } finally {
+      setRefreshing(false);
+    }
   }
 
   async function enterGroup(event: React.FormEvent<HTMLFormElement>) {
@@ -216,15 +245,14 @@ export default function Home() {
         setBusy(false);
         return;
       }
-      try { await makeLocalPoster(); setNotice("Preview poster made from your six photographs. AI artwork is available after Volcengine is connected."); }
+      try { await makeLocalPoster(); setNotice("Preview poster made from your required photographs. AI artwork is available after Volcengine is connected."); }
       catch (error) { setNotice(error instanceof Error ? error.message : "Could not make the poster."); return; }
     } finally { setBusy(false); }
     setStage("poster"); window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function switchGroup() { localStorage.removeItem("mplus-group"); setGroup(null); setPoster(""); setStage("overview"); setNotice(""); }
+  function switchGroup() { localStorage.removeItem("mplus-group"); setGroup(null); setPoster(""); setStage("overview"); setNotice(""); setSyncNotice(""); }
   function openMission(index: number) {
-    if (!canOpenMission(index)) { setNotice("Finish every photo and photographer name in the current mission before moving on."); return; }
     setMissionIndex(index); setStage("mission"); setNotice(""); window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -238,7 +266,7 @@ export default function Home() {
       <section className="login-panel">
         <div className="login-topline">M+6066 <span>01 / GROUP ENTRY</span></div>
         <div className="login-inner">
-          <div className="colour-tile">4 MISSIONS <span>×</span> 6 PHOTOS <span>=</span> 1 POSTER</div>
+          <div className="colour-tile">4 MISSIONS <span>×</span> 6 REQUIRED PHOTOS <span>=</span> 1 POSTER</div>
           <p className="eyebrow">SELF-GUIDED GROUP EXPERIENCE</p>
           <h1>Look again.<br /><em>Look closer.</em></h1>
           <p className="intro-copy">Explore the architecture of M+ together. Start with the museum, follow four photo missions, then make one group poster.</p>
@@ -260,13 +288,14 @@ export default function Home() {
       <header className="site-header">
         <button className="brand" onClick={() => setStage("overview")} aria-label="Go to M+6066 introduction">M<span>+</span>6066</button>
         <div className="header-equation">FORM + MATERIAL + LIGHT + PLACE <b>= ?</b></div>
-        <div className="header-right"><span className="group-name">GROUP / <b>{group.name}</b></span><button onClick={switchGroup} className="switch-button">SWITCH GROUP</button></div>
+        <div className="header-right"><span className="group-name">GROUP / <b>{group.name}</b></span><button onClick={refreshGroup} disabled={busy || refreshing} className="refresh-button"><RefreshCw size={17} className={refreshing ? "is-spinning" : ""} />{refreshing ? "REFRESHING…" : "REFRESH PHOTOS"}</button><button onClick={switchGroup} className="switch-button">SWITCH GROUP</button></div>
       </header>
       <nav className="journey-nav" aria-label="Field study steps">
         <button className={stage === "overview" ? "active" : ""} onClick={() => setStage("overview")}><span>00</span> MEET M+</button>
-        {missions.map((mission, index) => <button key={mission.id} className={`${stage === "mission" && missionIndex === index ? "active" : ""} ${mission.tone}`} onClick={() => openMission(index)} disabled={!canOpenMission(index)}><span>0{index + 1}</span> {mission.title} {missionComplete(mission) && <Check size={17} />}</button>)}
+        {missions.map((mission, index) => <button key={mission.id} className={`${stage === "mission" && missionIndex === index ? "active" : ""} ${mission.tone}`} onClick={() => openMission(index)}><span>0{index + 1}</span> {mission.title} {missionComplete(mission) && <Check size={17} />}</button>)}
         <button className={stage === "poster" ? "active" : ""} onClick={() => poster && setStage("poster")} disabled={!poster}><span>05</span> POSTER + MIRO</button>
       </nav>
+      {syncNotice && <div className="sync-notice" role="status">{syncNotice}<button onClick={() => setSyncNotice("")} aria-label="Dismiss refresh message"><X size={18} /></button></div>}
 
       {stage === "overview" && <>
         <section className="overview-hero">
@@ -293,9 +322,9 @@ export default function Home() {
         <section className="how-it-works section-wrap">
           <div className="section-tag">YOUR GROUP’S ROUTE / 00 → 05</div><h2>What you will do.</h2>
           <div className="route-grid">
-            <div><strong>01</strong><h3>Meet M+</h3><p>Read this introduction and look at the reference photographs. Then begin at FORM.</p></div>
-            <div><strong>02</strong><h3>Visit four places</h3><p>Follow each mission’s location and photo directions. Think about the questions as you look.</p></div>
-            <div><strong>03</strong><h3>Upload six photos</h3><p>Take three FORM photos and one for each other mission. Enter a photographer’s name for every photo.</p></div>
+            <div><strong>01</strong><h3>Meet M+</h3><p>Read this introduction and look at the reference photographs. Choose any mission from the top menu.</p></div>
+            <div><strong>02</strong><h3>Visit four places</h3><p>Choose the order that works for your group. Follow each mission’s location and photo directions.</p></div>
+            <div><strong>03</strong><h3>Upload your photos</h3><p>Take three FORM photos and one for each other mission. A second photo in each later mission is optional. Name every photographer.</p></div>
             <div><strong>04</strong><h3>Poster → Miro</h3><p>Generate and save your group poster. Put it in your group’s space on Miro and answer the reflection questions there.</p></div>
           </div>
           <div className="overview-cta"><span>FORM + MATERIAL + LIGHT + PLACE <b>= YOUR VIEW</b></span><button onClick={() => openMission(0)}>START MISSION 1 <ArrowRight size={23} /></button></div>
@@ -304,7 +333,7 @@ export default function Home() {
 
       {stage === "mission" && <>
         <section className={`mission-hero ${current.tone}`}>
-          <div className="mission-hero-copy"><span className="section-tag">MISSION 0{missionIndex + 1} / 04</span><h1>{current.title}<span>.</span></h1><p>{current.subtitle}</p><div className="mission-count">{current.shots.length} {current.shots.length === 1 ? "PHOTO" : "PHOTOS"} TO TAKE <span>·</span> {completeCount} / {photoCount} UPLOADED</div></div>
+          <div className="mission-hero-copy"><span className="section-tag">MISSION 0{missionIndex + 1} / 04</span><h1>{current.title}<span>.</span></h1><p>{current.subtitle}</p><div className="mission-count">{current.shots.length} REQUIRED {current.shots.length === 1 ? "PHOTO" : "PHOTOS"} <span>·</span> {completeCount} / {photoCount} REQUIRED SAVED</div></div>
           <div className="mission-hero-photo"><Image src={current.image} alt={current.imageAlt} fill sizes="(max-width: 800px) 100vw, 49vw" /><span>LOOK / OBSERVE / PHOTOGRAPH</span></div>
         </section>
         <div className="mission-body section-wrap">
@@ -314,8 +343,8 @@ export default function Home() {
             <section className="instruction-card question-card"><span className="instruction-number">03 / THINK</span><h2>Questions to discuss</h2><ul>{current.questions.map((question) => <li key={question}>{question}</li>)}</ul><p className="answer-reminder">Keep your thoughts in mind. You will write your answers on Miro after making the poster.</p></section>
           </div>
           <section className="photo-section">
-            <div className="photo-section-heading"><span className="instruction-number">04 / TAKE + UPLOAD</span><h2>{current.shots.length === 1 ? "Take this photo." : "Take these three photos."}</h2><p>For each frame: follow the direction, type the photographer’s name, then choose the photograph to upload.</p></div>
-            <div className={`photo-grid ${current.shots.length === 1 ? "one-photo" : ""}`}>
+            <div className="photo-section-heading"><span className="instruction-number">04 / TAKE + UPLOAD</span><h2>{current.shots.length === 1 ? "Take this photo." : "Take these three photos."}</h2><p>For each photo: follow the direction, type the photographer’s name, then choose a file. You may visit the four missions in any order.</p></div>
+            <div className={`photo-grid ${current.shots.length === 1 ? "optional-grid" : ""}`}>
               {current.shots.map((shot, slot) => {
                 const photo = allPhotos.find((entry) => entry.mission === current.id && entry.slot === String(slot));
                 const key = `${current.id}-${slot}`;
@@ -328,18 +357,31 @@ export default function Home() {
                   <button className="upload-button" disabled={busy} onClick={() => { inputRef.current?.setAttribute("data-mission", current.id); inputRef.current?.setAttribute("data-slot", String(slot)); inputRef.current?.click(); }}><ImagePlus size={21} />{photo ? "REPLACE PHOTOGRAPH" : "CHOOSE + UPLOAD PHOTO"}</button>
                 </div>;
               })}
+              {current.id !== "form" && (() => {
+                const slot = 1;
+                const photo = allPhotos.find((entry) => entry.mission === current.id && entry.slot === String(slot));
+                const key = `${current.id}-${slot}`;
+                return <div className="photo-card optional-photo-card" key={key}>
+                  <div className="photo-card-top"><span>OPTIONAL / SECOND VIEW</span>{photo && <span className="saved-badge"><Check size={17} /> SAVED</span>}</div>
+                  <h3>Another perspective</h3><p>Add one more view of this mission if your group has it. You can skip this card and move on.</p>
+                  {photo && <div className="photo-preview"><img src={photo.url} alt={`Optional ${current.title} photo by ${photo.photographer}`} /><span>PHOTO BY {photo.photographer}</span></div>}
+                  <label htmlFor={`photographer-${key}`} className="photographer-label">PHOTOGRAPHER’S NAME</label>
+                  <input id={`photographer-${key}`} className="photographer-input" value={authors[key] ?? photo?.photographer ?? ""} onChange={(event) => setAuthors({ ...authors, [key]: event.target.value })} placeholder="Who took this photo?" maxLength={60} />
+                  <button className="upload-button" disabled={busy} onClick={() => { inputRef.current?.setAttribute("data-mission", current.id); inputRef.current?.setAttribute("data-slot", String(slot)); inputRef.current?.click(); }}><ImagePlus size={21} />{photo ? "REPLACE OPTIONAL PHOTO" : "ADD OPTIONAL PHOTO"}</button>
+                </div>;
+              })()}
             </div>
             <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(event) => { const file = event.target.files?.[0]; const mission = event.currentTarget.getAttribute("data-mission") || current.id; const slot = Number(event.currentTarget.getAttribute("data-slot") || 0); if (file) uploadPhoto(file, mission, slot); event.currentTarget.value = ""; }} />
           </section>
           {notice && <div className="notice-bar" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Dismiss message"><X size={20} /></button></div>}
-          <div className="mission-actions"><button className="back-button" onClick={() => missionIndex === 0 ? setStage("overview") : openMission(missionIndex - 1)}><ArrowLeft size={20} />{missionIndex === 0 ? "BACK TO M+ INTRO" : "PREVIOUS MISSION"}</button>{missionIndex < 3 ? <button className="next-button" onClick={() => openMission(missionIndex + 1)} disabled={busy || !missionComplete(current)}>{missionComplete(current) ? `NEXT: ${missions[missionIndex + 1].title}` : `UPLOAD ${current.shots.length === 1 ? "THE PHOTO" : `ALL ${current.shots.length} PHOTOS`} TO CONTINUE`} <ArrowRight size={21} /></button> : <button className="next-button" onClick={generatePoster} disabled={busy || completeCount < photoCount}><Sparkles size={20} />{busy ? "MAKING POSTER… PLEASE WAIT" : completeCount < photoCount ? `UPLOAD ALL ${photoCount} PHOTOS FIRST` : "GENERATE GROUP POSTER"}</button>}</div>
-          {missionIndex === 3 && busy && <p className="completion-help" role="status">The image engine is arranging your six photos. This can take up to four minutes. Keep this page open; your uploaded photos are already saved.</p>}
-          {!missionComplete(current) && <p className="completion-help">This mission unlocks the next step only after every frame has a saved photograph and photographer name.</p>}
+          <div className="mission-actions"><button className="back-button" onClick={() => missionIndex === 0 ? setStage("overview") : openMission(missionIndex - 1)}><ArrowLeft size={20} />{missionIndex === 0 ? "BACK TO M+ INTRO" : "PREVIOUS MISSION"}</button><div className="mission-forward-actions">{missionIndex < 3 && <button className="next-button" onClick={() => openMission(missionIndex + 1)} disabled={busy}>NEXT: {missions[missionIndex + 1].title} <ArrowRight size={21} /></button>}<button className="generate-button" onClick={generatePoster} disabled={busy || completeCount < photoCount}><Sparkles size={20} />{busy ? "MAKING POSTER… PLEASE WAIT" : completeCount < photoCount ? `POSTER: ${completeCount} / ${photoCount} REQUIRED PHOTOS` : "GENERATE GROUP POSTER"}</button></div></div>
+          {busy && <p className="completion-help" role="status">The image engine is arranging your photos. This can take up to four minutes. Keep this page open; your uploaded photos are already saved.</p>}
+          {completeCount < photoCount && <p className="completion-help">You can visit missions in any order. The poster unlocks after all six required photos and photographer names are saved; second views are optional.</p>}
         </div>
       </>}
 
       {stage === "poster" && <section className="poster-page section-wrap">
-        <div className="section-tag">05 / YOUR GROUP’S FINAL BOARD</div><h1>{group.name}<span> × </span>M+6066</h1><p className="poster-lead">Your six views have become one group poster. Finish the activity together on Miro.</p>
+        <div className="section-tag">05 / YOUR GROUP’S FINAL BOARD</div><h1>{group.name}<span> × </span>M+6066</h1><p className="poster-lead">Your group’s photographs have become one poster. Finish the activity together on Miro.</p>
         {poster && <div className="poster-preview"><img src={poster} alt={`M+6066 poster for ${group.name}`} /></div>}
         {notice && <div className="notice-bar" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Dismiss message"><X size={20} /></button></div>}
         <div className="miro-panel"><div className="miro-heading"><span>FINAL STEPS / DO THESE IN ORDER</span><h2>Poster → Miro → answers.</h2></div><ol><li><strong>Save the poster.</strong> Download the image to your device.</li><li><strong>Open the class Miro board.</strong> Find the space assigned to your group.</li><li><strong>Place your poster there.</strong> Upload the saved image to your group’s space.</li><li><strong>Answer the reflection questions.</strong> Add written responses for FORM, MATERIAL, LIGHT and PLACE & IDENTITY beside the poster. Discuss what your photographs show.</li></ol><div className="miro-actions"><a href={poster} download={`Mplus6066-${group.name.replace(/[^a-z0-9-]/gi, "-")}.png`} target="_blank" rel="noreferrer" className="save-button"><Download size={21} /> SAVE POSTER</a><a href={MIRO_URL} target="_blank" rel="noreferrer" className="miro-button">OPEN THE CLASS MIRO BOARD <ArrowUpRight size={23} /></a></div></div>
