@@ -57,6 +57,7 @@ export default function Home() {
   const [stage, setStage] = useState<Stage>("overview");
   const [missionIndex, setMissionIndex] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [generatingPoster, setGeneratingPoster] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState("");
   const [syncNotice, setSyncNotice] = useState("");
@@ -232,7 +233,7 @@ export default function Home() {
 
   async function generatePoster() {
     if (completeCount < photoCount) { setNotice(`Upload all ${photoCount} photographs before generating the poster.`); return; }
-    setBusy(true); setNotice("");
+    setBusy(true); setGeneratingPoster(true); setNotice("");
     try {
       if (String(group?.id).startsWith("local-")) throw new Error("Local preview");
       const response = await fetch("/api/poster", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ groupId: group?.id }) });
@@ -247,7 +248,7 @@ export default function Home() {
       }
       try { await makeLocalPoster(); setNotice("Preview poster made from your required photographs. AI artwork is available after Volcengine is connected."); }
       catch (error) { setNotice(error instanceof Error ? error.message : "Could not make the poster."); return; }
-    } finally { setBusy(false); }
+    } finally { setBusy(false); setGeneratingPoster(false); }
     setStage("poster"); window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -375,7 +376,7 @@ export default function Home() {
           </section>
           {notice && <div className="notice-bar" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Dismiss message"><X size={20} /></button></div>}
           <div className="mission-actions"><button className="back-button" onClick={() => missionIndex === 0 ? setStage("overview") : openMission(missionIndex - 1)}><ArrowLeft size={20} />{missionIndex === 0 ? "BACK TO M+ INTRO" : "PREVIOUS MISSION"}</button><div className="mission-forward-actions">{missionIndex < 3 && <button className="next-button" onClick={() => openMission(missionIndex + 1)} disabled={busy}>NEXT: {missions[missionIndex + 1].title} <ArrowRight size={21} /></button>}<button className="generate-button" onClick={generatePoster} disabled={busy || completeCount < photoCount}><Sparkles size={20} />{busy ? "MAKING POSTER… PLEASE WAIT" : completeCount < photoCount ? `POSTER: ${completeCount} / ${photoCount} REQUIRED PHOTOS` : "GENERATE GROUP POSTER"}</button></div></div>
-          {busy && <p className="completion-help" role="status">The image engine is arranging your photos. This can take up to four minutes. Keep this page open; your uploaded photos are already saved.</p>}
+          {generatingPoster && <p className="completion-help" role="status">The image engine is arranging your photos. This can take up to four minutes. Keep this page open; your uploaded photos are already saved.</p>}
           {completeCount < photoCount && <p className="completion-help">You can visit missions in any order. The poster unlocks after all six required photos and photographer names are saved; second views are optional.</p>}
         </div>
       </>}
