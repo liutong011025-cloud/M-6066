@@ -5,7 +5,7 @@ import { getSupabaseAdmin, PHOTO_BUCKET } from "@/lib/supabase-admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-const missions: Record<string, number> = { form: 3, material: 1, light: 1, place: 1 };
+const missions: Record<string, number> = { form: 3, material: 2, light: 2, place: 2 };
 
 export async function POST(request: Request) {
   const supabase = getSupabaseAdmin();
@@ -23,15 +23,6 @@ export async function POST(request: Request) {
     if (!(["image/jpeg", "image/png", "image/webp"].includes(file.type)) || file.size > 4_000_000 || file.size < 1) {
       return NextResponse.json({ error: "Use a JPG, PNG, or WebP under 4 MB." }, { status: 400 });
     }
-    const order = ["form", "material", "light", "place"];
-    const { data: previous, error: previousError } = await supabase.from("photos").select("mission, slot, photographer").eq("group_id", groupId);
-    if (previousError) throw previousError;
-    const missingPrevious = order.slice(0, order.indexOf(mission)).some((earlier) =>
-      Array.from({ length: missions[earlier] }, (_, index) => index).some((index) =>
-        !(previous ?? []).some((photo) => photo.mission === earlier && photo.slot === index && photo.photographer?.trim())
-      )
-    );
-    if (missingPrevious) return NextResponse.json({ error: "Complete every photo and photographer name in the earlier missions first." }, { status: 409 });
     const extension = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
     const storagePath = `${groupId}/${mission}/${slot}-${randomUUID()}.${extension}`;
     const { error: uploadError } = await supabase.storage.from(PHOTO_BUCKET).upload(storagePath, file, { contentType: file.type, upsert: false });
