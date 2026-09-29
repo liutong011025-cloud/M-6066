@@ -25,8 +25,16 @@ export async function POST(request: Request) {
     if (!required.every(([mission, slot]) => photoList.some((photo) => photo.mission === mission && photo.slot === slot))) {
       return NextResponse.json({ error: "Complete all six photo frames before creating the group poster." }, { status: 400 });
     }
-    const signedImages = await Promise.all(required.map(async ([mission, slot]) => {
-      const photo = photoList.find((entry) => entry.mission === mission && entry.slot === slot)!;
+    const missionOrder = ["form", "material", "light", "place"];
+    const orderedPhotos = photoList
+      .filter((photo) => missionOrder.includes(photo.mission))
+      .sort((a, b) => missionOrder.indexOf(a.mission) - missionOrder.indexOf(b.mission) || a.slot - b.slot);
+    if (orderedPhotos.length > 9) return NextResponse.json({ error: "This poster supports up to nine photos. Please contact your teacher." }, { status: 400 });
+    const referenceGuide = missionOrder.map((mission) => {
+      const indexes = orderedPhotos.flatMap((photo, index) => photo.mission === mission ? [index + 1] : []);
+      return `${mission.toUpperCase()}: reference ${indexes.join(indexes.length > 1 ? " and " : "")}`;
+    }).join("; ");
+    const signedImages = await Promise.all(orderedPhotos.map(async (photo) => {
       const { data, error } = await supabase.storage.from(PHOTO_BUCKET).createSignedUrl(photo.storage_path, 3600);
       if (error || !data?.signedUrl) throw error ?? new Error("Could not prepare the reference photos.");
       return data.signedUrl;
@@ -36,7 +44,7 @@ export async function POST(request: Request) {
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: process.env.VOLCENGINE_MODEL || "doubao-seedream-4-0-250828",
-        prompt: `Create a polished contemporary museum field-study poster using the six supplied reference photographs as the actual photo content. Preserve what each photo depicts and arrange them as a tactile handmade research board: three small architectural views under FORM, facade macro under MATERIAL, a human-scale light and space moment under LIGHT, and harbour skyline context under PLACE & IDENTITY. Use a warm off-white paper ground, precise black grid lines, vermilion, cobalt, butter yellow and soft pink colour blocks, large editorial typography, restrained hand-drawn arrows and note marks. Put the exact group name “${group.name.replace(/["\\]/g, "")}” prominently in the center in large bold type. Add the exact title “M+6066” and the section titles FORM, MATERIAL, LIGHT, PLACE & IDENTITY. The result should look like a beautifully assembled student architecture field journal. Landscape 3:2 composition, crisp legible layout.`,
+        prompt: `Create a polished contemporary museum field-study poster using ALL ${orderedPhotos.length} supplied reference photographs as the actual photo content. Preserve what each photo depicts and arrange every photograph as a separate image on a tactile handmade research board. The reference order is ${referenceGuide}. FORM has three distinct architectural views. MATERIAL shows facade details, LIGHT shows human-scale light and space, and PLACE & IDENTITY shows harbour skyline context. Include each optional second photo when supplied. Use a warm off-white paper ground, precise black grid lines, vermilion, cobalt, butter yellow and soft pink colour blocks, large editorial typography, restrained hand-drawn arrows and note marks. Put the exact group name “${group.name.replace(/["\\]/g, "")}” prominently in the center in large bold type. Add the exact title “M+6066” and the section titles FORM, MATERIAL, LIGHT, PLACE & IDENTITY. The result should look like a beautifully assembled student architecture field journal. Landscape 3:2 composition, crisp legible layout.`,
         image: signedImages,
         size: "2K",
         sequential_image_generation: "disabled",
