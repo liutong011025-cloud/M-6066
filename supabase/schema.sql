@@ -20,8 +20,15 @@ create table if not exists public.photos (
   constraint photos_group_mission_slot_unique unique (group_id, mission, slot),
   constraint photos_valid_mission_slot check (
     (mission = 'form' and slot between 0 and 2) or
-    (mission in ('material', 'light', 'place') and slot = 0)
+    (mission in ('material', 'light', 'place') and slot between 0 and 1)
   )
+);
+
+-- Keep an existing database compatible with optional second photos.
+alter table public.photos drop constraint if exists photos_valid_mission_slot;
+alter table public.photos add constraint photos_valid_mission_slot check (
+  (mission = 'form' and slot between 0 and 2) or
+  (mission in ('material', 'light', 'place') and slot between 0 and 1)
 );
 
 create index if not exists photos_group_id_idx on public.photos(group_id);
